@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_users_form_api_token" model="ir.ui.view">
+        <field name="name">res.users.form.api.token</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="API Token">
+                    <group>
+                        <field name="api_token" readonly="1" password="True"/>
+                        <field name="api_token_last_generated" readonly="1"/>
+                        <field name="api_token_duration"/>
+                        <field name="api_token_expiry" readonly="1"/>
+                    </group>
+                    <group>
+                        <button name="action_generate_api_token"
+                                type="object"
+                                string="Generate/Refresh Token"
+                                class="btn-primary"
+                                groups="base.group_system"/>
+                        <button name="action_clear_api_token"
+                                type="object"
+                                string="Clear Token"
+                                class="btn-secondary"
+                                groups="base.group_system"/>
+                    </group>
+                    <span class="o_form_label">Notes:</span>
+                    <p>
+                        Use the JSON endpoint <code>/api/login</code> to obtain a token.
+                        Then call protected endpoints with header <code>Authorization: Bearer &lt;token&gt;</code>.
+                    </p>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
