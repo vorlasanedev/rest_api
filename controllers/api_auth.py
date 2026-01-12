@@ -117,22 +117,37 @@ class ApiAuthController(http.Controller):
         except Exception as e:
             return self._json_response({"error": "Logout failed", "message": str(e)}, status=500)
 
-    @http.route('/api/v1/<string:model_name>/fields', type='http', auth='api_key', methods=['GET'], csrf=False)
-    def api_v1_fields(self, model_name, **kwargs):
-        """Returns metadata for all fields of a model."""
-        try:
-            Model = request.env.get(model_name)
-            if Model is None:
-                return self._json_response({'error': f"Model '{model_name}' not found"}, status=404)
+    def _transform_binary_to_url(self, model, records_data):
+        """Replaces Base64 binary data with a short web URL."""
+        if not records_data:
+            return records_data
             
-            # We use sudo() for discovery since metadata is technically safe
-            # but usually it should follow Odoo ACLs.
-            return self._json_response(Model.sudo().fields_get())
-        except Exception as e:
-            _logger.error("REST API Metadata Error: %s", str(e))
-            return self._json_response({'error': 'Forbidden or Server Error', 'message': str(e)}, status=403)
+        # Ensure we are working with a list of dicts
+        is_single = isinstance(records_data, dict)
+        data = [records_data] if is_single else records_data
+        
+        # Identify binary fields
+        fields_info = model.fields_get()
+        binary_fields = [f for f, info in fields_info.items() if info.get('type') == 'binary']
+        
+        if not binary_fields:
+            return records_data
+            
+        base_url = request.httprequest.url_root.rstrip('/')
+        model_name = model._name
+        
+        for row in data:
+            rec_id = row.get('id')
+            if not rec_id: continue
+            for field in binary_fields:
+                if field in row and row[field]:
+                    # Shorten binary data to a predictable Odoo URL
+                    row[field] = f"{base_url}/web/image/{model_name}/{rec_id}/{field}"
+        
+        return data[0] if is_single else data
 
     @http.route([
+        '/api/v1/<string:model_name>/fields',
         '/api/v1/<string:model_name>',
         '/api/v1/<string:model_name>/<int:rec_id>'
     ], type='http', auth='api_key', methods=['GET', 'POST', 'PUT', 'DELETE'], csrf=False)
@@ -143,24 +158,34 @@ class ApiAuthController(http.Controller):
         if Model is None:
             return self._json_response({'error': f"Model '{model_name}' not found"}, status=404)
 
+        if request.httprequest.path.endswith('/fields'):
+            return self._json_response(Model.sudo().fields_get())
+
         method = request.httprequest.method
         try:
             if method == 'GET':
+                use_image_url = request.params.get('image_url', '').lower() == 'true'
                 if rec_id:
                     record = Model.browse(rec_id)
                     if not record.exists():
                         return self._json_response({'error': "Not found"}, status=404)
                     fields_to_read = json.loads(request.params.get('fields', '[]'))
-                    return self._json_response(record.read(fields_to_read)[0])
+                    data = record.read(fields_to_read)[0]
+                    if use_image_url:
+                        data = self._transform_binary_to_url(Model, data)
+                    return self._json_response(data)
                 else:
                     domain = json.loads(request.params.get('domain', '[]'))
                     fields_to_read = json.loads(request.params.get('fields', '[]'))
                     limit = int(request.params.get('limit', 80))
                     offset = int(request.params.get('offset', 0))
                     records = Model.search(domain, limit=limit, offset=offset)
+                    results = records.read(fields_to_read)
+                    if use_image_url:
+                        results = self._transform_binary_to_url(Model, results)
                     return self._json_response({
                         'total': Model.search_count(domain),
-                        'results': records.read(fields_to_read)
+                        'results': results
                     })
             
             elif method == 'POST':
