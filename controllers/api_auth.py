@@ -117,19 +117,31 @@ class ApiAuthController(http.Controller):
         except Exception as e:
             return self._json_response({"error": "Logout failed", "message": str(e)}, status=500)
 
+    @http.route('/api/v1/<string:model_name>/fields', type='http', auth='api_key', methods=['GET'], csrf=False)
+    def api_v1_fields(self, model_name, **kwargs):
+        """Returns metadata for all fields of a model."""
+        try:
+            Model = request.env.get(model_name)
+            if Model is None:
+                return self._json_response({'error': f"Model '{model_name}' not found"}, status=404)
+            
+            # We use sudo() for discovery since metadata is technically safe
+            # but usually it should follow Odoo ACLs.
+            return self._json_response(Model.sudo().fields_get())
+        except Exception as e:
+            _logger.error("REST API Metadata Error: %s", str(e))
+            return self._json_response({'error': 'Forbidden or Server Error', 'message': str(e)}, status=403)
+
     @http.route([
-        '/api/v1/<string:model_name>/fields',
         '/api/v1/<string:model_name>',
         '/api/v1/<string:model_name>/<int:rec_id>'
     ], type='http', auth='api_key', methods=['GET', 'POST', 'PUT', 'DELETE'], csrf=False)
     def dispatch_rest(self, model_name, rec_id=None, **kwargs):
         """Generic REST Dispatcher using API Key Auth."""
+        _logger.info("REST API: Request to %s (%s)", model_name, request.httprequest.method)
         Model = request.env.get(model_name)
         if Model is None:
             return self._json_response({'error': f"Model '{model_name}' not found"}, status=404)
-
-        if request.httprequest.path.endswith('/fields'):
-            return self._json_response(Model.fields_get())
 
         method = request.httprequest.method
         try:

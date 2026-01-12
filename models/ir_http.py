@@ -1,6 +1,9 @@
 from odoo import models, http, fields
 from odoo.http import request
+import logging
 import werkzeug.exceptions
+
+_logger = logging.getLogger(__name__)
 
 class IrHttp(models.AbstractModel):
     _inherit = 'ir.http'
@@ -10,15 +13,18 @@ class IrHttp(models.AbstractModel):
         # Extract key from header X-API-Key or Authorization
         key = cls._extract_api_key()
         if not key:
+            _logger.warning("REST API AUTH: Missing API Key in request headers")
             raise werkzeug.exceptions.Unauthorized("API Key required")
 
         # Search for user with this key
-        # We use sudo() because this is an auth method running before env is set
         user = request.env['res.users'].sudo().search([('rest_api_key', '=', key)], limit=1)
 
         if not user:
+            _logger.warning("REST API AUTH: Invalid API Key provided: %s", key[:8] + "...")
             raise werkzeug.exceptions.Unauthorized("Invalid API Key")
 
+        _logger.info("REST API AUTH: Successfully authenticated user %s (ID: %s)", user.login, user.id)
+        
         # Update environment with the user
         request.update_env(user=user.id)
 
