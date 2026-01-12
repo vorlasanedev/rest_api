@@ -1,15 +1,15 @@
 {
-    "name": "Rest API",
-    "version": "1.0",
-    'author': 'soulivanh',
-    'website': 'https://ifundev.com',
-    "summary": "Rest API",
-    "category": "Tools",
-    "license": "LGPL-3",
-    "depends": ["base"],
-    "data": [
-        # "views/res_users_views.xml"
+    'name': 'REST API CRUD with Token Auth',
+    'version': '18.0.1.1.0',
+    'summary': 'Generic REST API with API Key Authentication (Odoo 18)',
+    'category': 'Tools',
+    'author': 'Soulivanh',
+    'license': 'LGPL-3',
+    'depends': ['base', 'web'],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/res_users_views.xml',
     ],
-    "installable": True,
-    "auto_install": False,
+    'installable': True,
+    'application': True,
 }

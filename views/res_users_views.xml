@@ -1,35 +1,28 @@
-<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_users_form_api_token" model="ir.ui.view">
-        <field name="name">res.users.form.api.token</field>
+    <record id="view_users_form_inherit_api_key" model="ir.ui.view">
+        <field name="name">res.users.form.inherit.api.key</field>
         <field name="model">res.users</field>
         <field name="inherit_id" ref="base.view_users_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//sheet/notebook" position="inside">
-                <page string="API Token">
+            <xpath expr="//notebook" position="inside">
+                <page string="API Access" name="api_access">
                     <group>
-                        <field name="api_token" readonly="1" password="True"/>
-                        <field name="api_token_last_generated" readonly="1"/>
-                        <field name="api_token_duration"/>
-                        <field name="api_token_expiry" readonly="1"/>
+                        <group string="Authentication Details">
+                            <field name="rest_api_key" readonly="1" password="True"/>
+                            <button name="action_generate_api_key" 
+                                    type="object" 
+                                    string="Generate New API Key" 
+                                    class="btn-primary"
+                                    confirm="Are you sure? Any old key for this user will stop working."/>
+                        </group>
                     </group>
-                    <group>
-                        <button name="action_generate_api_token"
-                                type="object"
-                                string="Generate/Refresh Token"
-                                class="btn-primary"
-                                groups="base.group_system"/>
-                        <button name="action_clear_api_token"
-                                type="object"
-                                string="Clear Token"
-                                class="btn-secondary"
-                                groups="base.group_system"/>
-                    </group>
-                    <span class="o_form_label">Notes:</span>
-                    <p>
-                        Use the JSON endpoint <code>/api/login</code> to obtain a token.
-                        Then call protected endpoints with header <code>Authorization: Bearer &lt;token&gt;</code>.
-                    </p>
+                    <div class="alert alert-info" role="alert" style="margin-top: 20px;">
+                        <strong>Quick Start Guide:</strong><br/>
+                        1. Generate your API Key above.<br/>
+                        2. Use <code>POST /api/login</code> with your login/password to retrieve it via API.<br/>
+                        3. Call REST endpoints using header: <code>X-API-Key: YOUR_KEY</code><br/>
+                        Example: <code>GET /api/v1/res.partner</code>
+                    </div>
                 </page>
             </xpath>
         </field>
