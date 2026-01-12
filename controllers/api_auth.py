@@ -1,5 +1,6 @@
 from odoo import http, fields
 from odoo.http import request
+from odoo.exceptions import AccessError
 import json
 import logging
 from datetime import datetime
@@ -166,7 +167,7 @@ class ApiAuthController(http.Controller):
             if not relation:
                 continue
             
-            RelModel = request.env[relation].sudo()
+            RelModel = request.env[relation] # REMOVED .sudo() to enforce Access Rights
             
             # 1. Collect all related IDs
             related_ids = set()
@@ -291,6 +292,19 @@ class ApiAuthController(http.Controller):
                     domain = params.get('domain', [])
                     if isinstance(domain, str):
                         domain = json.loads(domain)
+                    
+                    # SUPPORT FOR DYNAMIC VALUES like "me"
+                    # We iterate and replace "me" with the current user's ID
+                    new_domain = []
+                    for leaf in domain:
+                        if isinstance(leaf, (list, tuple)) and len(leaf) == 3:
+                            field, op, val = leaf
+                            if val == 'me' or val == 'current_user':
+                                val = request.env.user.id
+                            new_domain.append((field, op, val))
+                        else:
+                            new_domain.append(leaf)
+                    domain = new_domain
                     
                     # is_active support (Allow 'is_active' OR 'active')
                     is_active_param = params.get('is_active')
@@ -422,7 +436,9 @@ class ApiAuthController(http.Controller):
                 record.unlink()
                 return self._json_response({'success': True}, status=204)
                 
-            return self._json_response({'error': "Method not allowed"}, status=405)
+            return self._json_response({'warn': "Method not allowed"}, status=405)
+        except AccessError as e:
+            return self._json_response({'error': "Access Denied", 'message': str(e)}, status=403)
         except Exception as e:
             _logger.exception("REST API Error")
             return self._json_response({'error': str(e)}, status=500)
