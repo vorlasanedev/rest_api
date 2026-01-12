@@ -1,73 +1,49 @@
-Add readme
-1. login
+# Odoo 18 REST API Module
 
-Method: POST
-header: 
-X-API-Key: <your_api_key>
-content-type: application/json
-body: 
+## 1. Authentication
+All requests (except `/api/login`) require the `X-API-Key` header.
+
+### Login (Get API Key)
+- **Method**: `POST`
+- **URL**: `/api/login`
+- **Body**: 
+```json
 {
-    "login": "secure_user@example.com",
-    "password": "Mypassword123!"
+    "login": "your_email@example.com",
+    "password": "your_password",
+    "db": "odoo18"
 }
-2. logout
+```
 
-Method: POST
-URL: /api/logout
-Authentication: 
-    type: bearer
-    value: <your_api_key>
-header: 
-content-type: application/json
+### Logout
+- **Method**: `POST`
+- **URL**: `/api/logout`
 
+---
 
-Operation CRUD	Method	URL	Notes
-Create	POST	/api/v1/res.users	Checks for duplicates, auto-generates API Key
+## 2. Metadata Discovery
+Use this to see what fields are available for any model.
 
-CRUD1-> Method: POST
-URL: /api/v1/res.users
-Authentication: 
-    type: bearer
-    value: <your_api_key>
-header: 
-content-type: application/json
-body: 
-{
-    "name": "Secure User",
-    "login": "secure_user@example.com",
-    "email": "secure_user@example.com",
-    "password": "Mypassword123!"
-}
+### List Available Fields
+- **Method**: `GET`
+- **URL**: `/api/v1/res.users/fields`
+- **Header**: `X-API-Key: <your_key>`
 
-CRUD2-> Read	GET	/api/v1/res.users/[ID]	Returns user data
+---
 
-Method: GET
-URL: /api/v1/res.users/[ID]
-Authentication: 
-    type: bearer
-    value: <your_api_key>
-header: 
-content-type: application/json
+## 3. CRUD Operations (`/api/v1/<model_name>`)
 
-CRUD3-> Update	PUT	/api/v1/res.users/[ID]	Updates fields (and validates password if sent)
+### Create (POST)
+- **URL**: `/api/v1/res.users`
+- **Body**: `{"name": "John", "login": "john@test.com", "password": "123", "confirm_password": "123"}`
 
-Method: PUT
-URL: /api/v1/res.users/[ID]
-Authentication: 
-    type: bearer
-    value: <your_api_key>
-header: 
-content-type: application/json
-body: 
-{
-    "name": "Secure User"
-}
-CRUD4-> Delete	DELETE	/api/v1/res.users/[ID]	Deletes the user
+### Read (GET)
+- **Single**: `/api/v1/res.users/7`
+- **Search**: `/api/v1/res.users?fields=["name","login"]&limit=10`
 
-Method: DELETE
-URL: /api/v1/res.users/[ID]
-Authentication: 
-    type: bearer
-    value: <your_api_key>
-header: 
-content-type: application/json
+### Update (PUT)
+- **URL**: `/api/v1/res.users/7`
+- **Body**: `{"name": "Updated John"}`
+
+### Delete (DELETE)
+- **URL**: `/api/v1/res.users/7`

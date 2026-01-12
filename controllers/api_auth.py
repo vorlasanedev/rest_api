@@ -118,6 +118,7 @@ class ApiAuthController(http.Controller):
             return self._json_response({"error": "Logout failed", "message": str(e)}, status=500)
 
     @http.route([
+        '/api/v1/<string:model_name>/fields',
         '/api/v1/<string:model_name>',
         '/api/v1/<string:model_name>/<int:rec_id>'
     ], type='http', auth='api_key', methods=['GET', 'POST', 'PUT', 'DELETE'], csrf=False)
@@ -126,6 +127,9 @@ class ApiAuthController(http.Controller):
         Model = request.env.get(model_name)
         if Model is None:
             return self._json_response({'error': f"Model '{model_name}' not found"}, status=404)
+
+        if request.httprequest.path.endswith('/fields'):
+            return self._json_response(Model.fields_get())
 
         method = request.httprequest.method
         try:
