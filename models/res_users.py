@@ -4,7 +4,12 @@ import secrets
 class ResUsers(models.Model):
     _inherit = 'res.users'
 
-    rest_api_key = fields.Char(string='REST API Key', readonly=True, copy=False)
+    rest_api_key = fields.Char(string="REST API Key", readonly=True, copy=False)
+    show_rest_api_key = fields.Boolean(string="Show API Key", default=False)
+
+    def toggle_api_key(self):
+        self.ensure_one()
+        self.show_rest_api_key = not self.show_rest_api_key
 
     def action_generate_api_key(self):
         self.ensure_one()

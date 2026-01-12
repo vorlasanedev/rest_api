@@ -8,7 +8,21 @@
                 <page string="API Access" name="api_access">
                     <group>
                         <group string="Authentication Details">
-                            <field name="rest_api_key" readonly="1" password="True"/>
+                            <label for="rest_api_key"/>
+                            <div class="o_row">
+                            <!-- disable copy and show api key -->
+                             <field name="rest_api_key" readonly="1" password="True"/>
+                            <!-- end disable copy and show api key -->
+
+                            <!-- enable copy and show api key -->
+                                <!-- <field name="rest_api_key" readonly="1" widget="copy_clipboard" password="True" invisible="show_rest_api_key"/>
+                                <field name="rest_api_key" readonly="1" widget="copy_clipboard" invisible="not show_rest_api_key"/>
+                                <field name="show_rest_api_key" invisible="1"/>
+                                <button name="toggle_api_key" type="object" icon="fa-eye" invisible="show_rest_api_key" class="btn btn-link py-0"/>
+                                <button name="toggle_api_key" type="object" icon="fa-eye-slash" invisible="not show_rest_api_key" class="btn btn-link py-0"/> -->
+                            <!-- end enable copy and show api key -->
+                            
+                            </div>
                             <button name="action_generate_api_key" 
                                     type="object" 
                                     string="Generate New API Key" 
