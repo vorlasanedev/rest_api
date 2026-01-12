@@ -146,6 +146,99 @@ class ApiAuthController(http.Controller):
         
         return data[0] if is_single else data
 
+    def _expand_relations(self, model, records_data, nested_fields):
+        """
+        Expands related fields for dotted notation requests.
+        records_data: list of dictionaries
+        nested_fields: dict { 'root_field': ['sub_field1', 'sub.sub.field'] }
+        """
+        if not records_data or not nested_fields:
+            return records_data
+
+        fields_info = model.fields_get(list(nested_fields.keys()))
+        
+        for root_field, sub_fields in nested_fields.items():
+            if root_field not in fields_info:
+                continue
+                
+            field_type = fields_info[root_field]['type']
+            relation = fields_info[root_field].get('relation')
+            if not relation:
+                continue
+            
+            RelModel = request.env[relation].sudo()
+            
+            # 1. Collect all related IDs
+            related_ids = set()
+            for row in records_data:
+                val = row.get(root_field)
+                if not val:
+                    continue
+                if isinstance(val, tuple): # Many2one (id, name)
+                    related_ids.add(val[0])
+                elif isinstance(val, list): # x2many [id1, id2]
+                    related_ids.update(val)
+                elif isinstance(val, int): # standard ID
+                    related_ids.add(val)
+            
+            if not related_ids:
+                continue
+                
+            # 2. Recursive expand (handle multiple levels of nesting if needed)
+            # For now, let's process the immediate children.
+            # Split sub_fields into direct children and their nested children
+            # sub_fields might be ['name', 'child_id.name']
+            
+            direct_sub_fields = set()
+            next_level_nested = {}
+            
+            for f in sub_fields:
+                parts = f.split('.', 1)
+                direct_sub_fields.add(parts[0])
+                if len(parts) > 1:
+                    if parts[0] not in next_level_nested:
+                        next_level_nested[parts[0]] = []
+                    next_level_nested[parts[0]].append(parts[1])
+            
+            # Always ensure 'id' and 'display_name' are fetched unless specific fields are strictly requested? 
+            # Or trust user input. Let's trust user input but add 'id'.
+            if 'id' not in direct_sub_fields:
+                direct_sub_fields.add('id')
+                
+            # 3. Fetch related records
+            # Note: We recursivley call ourselves to handle deep nesting
+            rel_records = RelModel.browse(list(related_ids))
+            rel_data_raw = rel_records.read(list(direct_sub_fields))
+            
+            # Transform binary if needed (optional, could be recursive, but let's stick to simple first)
+            rel_data_raw = self._transform_binary_to_url(RelModel, rel_data_raw)
+            if isinstance(rel_data_raw, dict): rel_data_raw = [rel_data_raw]
+
+            # Recurse if there are deeper levels
+            if next_level_nested:
+                rel_data_raw = self._expand_relations(RelModel, rel_data_raw, next_level_nested)
+            
+            # Index by ID
+            rel_map = {r['id']: r for r in rel_data_raw}
+            
+            # 4. Update original data
+            for row in records_data:
+                val = row.get(root_field)
+                if not val:
+                    row[root_field] = None if field_type == 'many2one' else []
+                    continue
+                    
+                if isinstance(val, tuple): # M2O
+                    row[root_field] = rel_map.get(val[0])
+                elif isinstance(val, int): # M2O as ID
+                    row[root_field] = rel_map.get(val)
+                elif isinstance(val, list): # x2M
+                    # Odoo returns list of IDs
+                    expanded = [rel_map[i] for i in val if i in rel_map]
+                    row[root_field] = expanded
+        
+        return records_data
+
     @http.route([
         '/api/v1/<string:model_name>/fields',
         '/api/v1/<string:model_name>',
@@ -164,27 +257,104 @@ class ApiAuthController(http.Controller):
         method = request.httprequest.method
         try:
             if method == 'GET':
-                use_image_url = request.params.get('image_url', '').lower() == 'true'
+                # 1. Merge Query Params + JSON Body Params
+                params = request.params.copy()
+                try:
+                    if request.httprequest.data:
+                        body_params = json.loads(request.httprequest.data)
+                        if isinstance(body_params, dict):
+                            params.update(body_params)
+                except Exception:
+                    pass  # Ignore invalid JSON in body for GET, stick to params
+
+                use_image_url = str(params.get('image_url', '')).lower() == 'true'
+                
                 if rec_id:
                     record = Model.browse(rec_id)
                     if not record.exists():
                         return self._json_response({'error': "Not found"}, status=404)
-                    fields_to_read = json.loads(request.params.get('fields', '[]'))
+                    fields_to_read = json.loads(params.get('fields', '[]') if isinstance(params.get('fields'), str) else json.dumps(params.get('fields')))
                     data = record.read(fields_to_read)[0]
                     if use_image_url:
                         data = self._transform_binary_to_url(Model, data)
                     return self._json_response(data)
                 else:
-                    domain = json.loads(request.params.get('domain', '[]'))
-                    fields_to_read = json.loads(request.params.get('fields', '[]'))
-                    limit = int(request.params.get('limit', 80))
-                    offset = int(request.params.get('offset', 0))
+                    # 2. Pagination Logic
+                    limit = int(params.get('limit') or params.get('page_size') or 80)
+                    page = int(params.get('page', 1))
+                    offset = int(params.get('offset', 0))
+                    
+                    if 'page' in params and 'offset' not in params:
+                        offset = (page - 1) * limit
+
+                    # 3. Filter Logic
+                    domain = params.get('domain', [])
+                    if isinstance(domain, str):
+                        domain = json.loads(domain)
+                    
+                    # is_active support (Allow 'is_active' OR 'active')
+                    is_active_param = params.get('is_active')
+                    if is_active_param is None:
+                        is_active_param = params.get('active')
+
+                    if is_active_param is not None:
+                        is_active = str(is_active_param).lower() == 'true'
+                        # Remove any existing 'active' term from domain to avoid conflict
+                        domain = [d for d in domain if d[0] != 'active']
+                        domain.append(('active', '=', is_active))
+                        
+                        # If searching for inactive, OR if we just want to control it explicitly,
+                        # set active_test=False so we can find nothing or everything as requested.
+                        # If we leave active_test=True, Odoo might force [('active','=',True)] logic 
+                        # which conflicts with [('active','=',False)].
+                        Model = Model.with_context(active_test=False)
+
+                    # --- Field Parsing for Nested Support ---
+                    raw_fields = params.get('fields', [])
+                    if isinstance(raw_fields, str):
+                        raw_fields = json.loads(raw_fields)
+                    
+                    fields_to_read = set()
+                    nested_fields = {} # { 'root': ['sub1', 'sub2'] }
+                    
+                    if not raw_fields:
+                        # empty fields means read all
+                        pass
+                    else:
+                        for f in raw_fields:
+                            if '.' in f:
+                                parts = f.split('.', 1)
+                                root = parts[0]
+                                fields_to_read.add(root)
+                                if root not in nested_fields:
+                                    nested_fields[root] = []
+                                nested_fields[root].append(parts[1])
+                            else:
+                                fields_to_read.add(f)
+                    
+                    fields_list = list(fields_to_read) if fields_to_read else []
+
+                    total_count = Model.search_count(domain)
                     records = Model.search(domain, limit=limit, offset=offset)
-                    results = records.read(fields_to_read)
+                    results = records.read(fields_list)
+                    
                     if use_image_url:
                         results = self._transform_binary_to_url(Model, results)
+                    
+                    # --- Expand Nested Relations ---
+                    if nested_fields:
+                         results = self._expand_relations(Model, results, nested_fields)
+                        
+                    # Calculate total pages
+                    total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+
                     return self._json_response({
-                        'total': Model.search_count(domain),
+                        'count': len(results),
+                        'total': total_count,
+                        'page': page,
+                        'total_pages': total_pages,
+                        'limit': limit,
+                        'offset': offset,
                         'results': results
                     })
             
