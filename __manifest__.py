@@ -1,5 +1,5 @@
 {
-    'name': 'REST API CRUD with Token Auth',
+    'name': 'REST API xRPC CRUD',
     'version': '18.0.1.1.0',
     'summary': 'Generic REST API with API Key Authentication (Odoo 18)',
     'category': 'Tools',

@@ -1,4 +1,4 @@
-# Odoo 18 REST API Module
+# REST API xRPC CRUD
 
 ## 1. Authentication
 All requests (except `/api/login`) require the `X-API-Key` header.
