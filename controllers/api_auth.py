@@ -4,6 +4,7 @@ from odoo.exceptions import AccessError
 import json
 import logging
 from datetime import datetime
+import secrets
 
 _logger = logging.getLogger(__name__)
 
@@ -91,14 +92,37 @@ class ApiAuthController(http.Controller):
         
         try:
             res = User._login(db=request.db, credential=credential, user_agent_env=user_agent_env)
+            _logger.info("REST API DEBUG: _login result: %s", res)
             uid = res.get('uid') if isinstance(res, dict) else res
+            _logger.info("REST API DEBUG: uid: %s", uid)
+            
             if not uid:
                 return self._json_response({"error": "Invalid credentials"}, status=401)
             
-            # Authentication successful -> ensure API Key exists
-            user = User.browse(uid)
+            # Ensure UID is an integer (handle potential single-item list)
+            if isinstance(uid, list) and len(uid) == 1:
+                uid = uid[0]
+            if isinstance(uid, list):
+                 _logger.error("REST API ERROR: _login returned a list of UIDs: %s", uid)
+                 return self._json_response({"error": "Authentication Error", "message": "Multiple users returned."}, status=500)
+
+            # Authentication successful -> bind environment to this user
+            request.update_env(user=uid)
+            
+            # Now request.env.user is the authenticated user
+            user = request.env.user
+            _logger.info("REST API DEBUG: user recordset: %s, ids: %s", user, user.ids)
+            
             if not user.rest_api_key:
-                user.action_generate_api_key()
+                _logger.info("REST API DEBUG: Generating API key (inline) for user %s", user.id)
+                try:
+                    # Inline generation to avoid method dispatch issues
+                    new_key = secrets.token_hex(32)
+                    # Use sudo() to write to readonly field and bypass hr check
+                    user.sudo().write({'rest_api_key': new_key})
+                except Exception as e:
+                     _logger.exception("REST API ERROR: Failed to generate/write API key.")
+                     return self._json_response({"error": "Key Generation Failed", "message": str(e)}, status=500)
             
             return self._json_response({
                 "uid": user.id,
@@ -106,6 +130,7 @@ class ApiAuthController(http.Controller):
                 "api_key": user.rest_api_key,
             })
         except Exception as e:
+            _logger.exception("REST API LOGIN EXCEPTION")
             return self._json_response({"error": "Authentication failed", "message": str(e)}, status=401)
 
     @http.route("/api/logout", type="http", auth="none", methods=["POST", "GET"], csrf=False)
@@ -339,6 +364,7 @@ class ApiAuthController(http.Controller):
                             if '.' in f:
                                 parts = f.split('.', 1)
                                 root = parts[0]
+                                fields_to_read.add(root)
                                 fields_to_read.add(root)
                                 if root not in nested_fields:
                                     nested_fields[root] = []
